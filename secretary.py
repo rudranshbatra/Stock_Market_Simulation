@@ -26,9 +26,9 @@ class Secretary:
         return run_api(self.model, prompt)
 
     """
-        用json形式返回结果，例如：
+        Return results in JSON format, for example:
         {{{{"loan": "yes", "loan_type": 3, "amount": 1000}}}}
-        如果不需贷款，则返回：
+        If no loan is needed, return:
         {{{{"loan" : "no"}}}}
         :returns: loan_format_check, fail_response, loan
     """

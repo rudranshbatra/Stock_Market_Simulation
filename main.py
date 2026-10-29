@@ -23,32 +23,32 @@ def handle_action(action, stock_deals, all_agents, stock, session):
         if action["action_type"] == "buy":
             for sell_action in stock_deals["sell"][:]:
                 if action["price"] == sell_action["price"]:
-                    # 交易成交
+                    # Trade executed
                     close_amount = min(action["amount"], sell_action["amount"])
                     get_agent(all_agents, action["agent"]).buy_stock(stock.name, close_amount, action["price"])
-                    if not sell_action["agent"] == -1:  # B发行
+                    if not sell_action["agent"] == -1:  # Stock B issuance
                         get_agent(all_agents, sell_action["agent"]).sell_stock(stock.name, close_amount, action["price"])
                     stock.add_session_deal({"price": action["price"], "amount": close_amount})
                     create_trade_record(action["date"], session, stock.name, action["agent"], sell_action["agent"],
                                         close_amount, action["price"])
 
-                    if action["amount"] > close_amount:  # 买单未结束，卖单结束，继续循环
+                    if action["amount"] > close_amount:  # Buy order not completely filled, sell order filled, continue matching
                         log.logger.info(f"ACTION - BUY:{action['agent']}, SELL:{sell_action['agent']}, "
                                         f"STOCK:{stock.name}, PRICE:{action['price']}, AMOUNT:{close_amount}")
                         stock_deals["sell"].remove(sell_action)
                         action["amount"] -= close_amount
-                    else:  # 卖单未结束，买单结束
+                    else:  # Sell order not filled, buy order completely filled
                         log.logger.info(f"ACTION - BUY:{action['agent']}, SELL:{sell_action['agent']}, "
                                         f"STOCK:{stock.name}, PRICE:{action['price']}, AMOUNT:{close_amount}")
                         sell_action["amount"] -= close_amount
                         return
-            # 遍历卖单后仍然有剩余
+            # Remaining buy order appended to order book
             stock_deals["buy"].append(action)
 
         else:
             for buy_action in stock_deals["buy"][:]:
                 if action["price"] == buy_action["price"]:
-                    # 交易成交
+                    # Trade executed
                     close_amount = min(action["amount"], buy_action["amount"])
                     get_agent(all_agents, action["agent"]).sell_stock(stock.name, close_amount, action["price"])
                     get_agent(all_agents, buy_action["agent"]).buy_stock(stock.name, close_amount, action["price"])
@@ -56,12 +56,12 @@ def handle_action(action, stock_deals, all_agents, stock, session):
                     create_trade_record(action["date"], session, stock.name, buy_action["agent"], action["agent"],
                                         close_amount, action["price"])
 
-                    if action["amount"] > close_amount:  # 卖单未结束，买单结束，继续循环
+                    if action["amount"] > close_amount:  # Sell order not completely filled, buy order filled, continue matching
                         log.logger.info(f"ACTION - BUY:{buy_action['agent']}, SELL:{action['agent']}, "
                                         f"STOCK:{stock.name}, PRICE:{action['price']}, AMOUNT:{close_amount}")
                         stock_deals["buy"].remove(buy_action)
                         action["amount"] -= close_amount
-                    else:  # 买单未结束，卖单结束
+                    else:  # Buy order not filled, sell order completely filled
                         log.logger.info(f"ACTION - BUY:{buy_action['agent']}, SELL:{action['agent']}, "
                                         f"STOCK:{stock.name}, PRICE:{action['price']}, AMOUNT:{close_amount}")
                         buy_action["amount"] -= close_amount
@@ -73,20 +73,20 @@ def handle_action(action, stock_deals, all_agents, stock, session):
 
 
 def simulation(args):
-    # init
+    # Initialization
     secretary = Secretary(args.model)
     stock_a = Stock("A", util.STOCK_A_INITIAL_PRICE, 0, is_new=False)
     #stock_b = Stock("B", util.STOCK_B_INITIAL_PRICE, util.STOCK_B_PUBLISH, is_new=True)
     stock_b = Stock("B", util.STOCK_B_INITIAL_PRICE, 0, is_new=False)
     all_agents = []
-    log.logger.debug("Agents initial...")
+    log.logger.debug("Agents initializing...")
     for i in range(0, util.AGENTS_NUM):  # agents start from 0, -1 refers to admin
         agent = Agent(i, stock_a.get_price(), stock_b.get_price(), secretary, args.model)
         all_agents.append(agent)
         log.logger.debug("cash: {}, stock a: {}, stock b:{}, debt: {}".format(agent.cash, agent.stock_a_amount,
                                                                               agent.stock_b_amount, agent.loans))
 
-    # start simulation
+    # Start simulation
     last_day_forum_message = []
     stock_a_deals = {"sell": [], "buy": []}
     stock_b_deals = {"sell": [], "buy": []}
@@ -97,7 +97,7 @@ def simulation(args):
     for date in range(1, util.TOTAL_DATE + 1):
 
         log.logger.debug(f"--------DAY {date}---------")
-        # 除b发行外，删除前一天的所有交易
+        # Clear previous day's orders
         stock_a_deals["sell"].clear()
         stock_a_deals["buy"].clear()
         stock_b_deals["buy"].clear()
@@ -105,22 +105,22 @@ def simulation(args):
         # tmp_action = next((action for action in stock_b_deals["sell"] if action["agent"] == -1), None)
         stock_b_deals["sell"].clear()
         # if tmp_action:
-        #     tmp_action["price"] *= 0.9  # B发行折价
+        #     tmp_action["price"] *= 0.9  # Stock B issuance discount
         #     if tmp_action["price"] < 1:
         #         log.logger.warning("WARNING: STOCK B WITHDRAW FROM MARKET!!!")
         #     stock_b_deals["sell"].append(tmp_action)
 
-        # check if an agent needs to repay loans
+        # Check if an agent needs to repay loans
         for agent in all_agents[:]:
-            agent.chat_history.clear()  # 只保存当天的聊天记录
+            agent.chat_history.clear()  # Keep only today's conversation history
             agent.loan_repayment(date)
 
-        # repayment days
+        # Repayment days
         if date in util.REPAYMENT_DAYS:
             for agent in all_agents[:]:
                 agent.interest_payment()
 
-        # deal with cash<0 agents
+        # Deal with bankrupt agents (cash < 0)
         for agent in all_agents[:]:
             if agent.is_bankrupt:
                 quit_sig = agent.bankrupt_process(stock_a.get_price(), stock_b.get_price())
@@ -128,7 +128,7 @@ def simulation(args):
                     agent.quit = True
                     all_agents.remove(agent)
 
-        # special events
+        # Special events
         if date == util.EVENT_1_DAY:
             util.LOAN_RATE = util.EVENT_1_LOAN_RATE
             last_day_forum_message.append({"name": -1, "message": util.EVENT_1_MESSAGE})
@@ -136,7 +136,7 @@ def simulation(args):
             util.LOAN_RATE = util.EVENT_2_LOAN_RATE
             last_day_forum_message.append({"name": -1, "message": util.EVENT_2_MESSAGE})
 
-        # agent decide whether to loan
+        # Agents decide whether to take loans
         daily_agent_records = []
         for agent in all_agents:
             loan = agent.plan_loan(date, stock_a.get_price(), stock_b.get_price(), last_day_forum_message)
@@ -144,12 +144,12 @@ def simulation(args):
 
         for session in range(1, util.TOTAL_SESSION + 1):
             log.logger.debug(f"SESSION {session}")
-            # 随机定义交易顺序
+            # Randomize trading order sequence
             sequence = list(range(len(all_agents)))
             random.shuffle(sequence)
             for i in sequence:
                 agent = all_agents[i]
-                # if agent.is_bankrupt:  # cash<0的当天停止交易，交易时段结束后贩卖股票
+                # if agent.is_bankrupt:  # Agents with cash < 0 suspend trading for the day
                 #     continue
 
                 action = agent.plan_stock(date, session, stock_a, stock_b, stock_a_deals, stock_b_deals)
@@ -163,13 +163,13 @@ def simulation(args):
                     else:
                         handle_action(action, stock_b_deals, all_agents, stock_b, session)
 
-            # 交易时段结束，更新股票价格
+            # Session ended, update stock prices
             stock_a.update_price(date)
             stock_b.update_price(date)
             create_stock_record(date, session, stock_a.get_price(), stock_b.get_price())
 
 
-        # agent预测明天行动
+        # Agents predict tomorrow's actions
         for idx, agent in enumerate(all_agents):
             estimation = agent.next_day_estimate()
             log.logger.info("Agent {} tomorrow estimation: {}".format(agent.order, estimation))
@@ -179,7 +179,7 @@ def simulation(args):
             daily_agent_records[idx].write_to_excel()
         daily_agent_records.clear()
 
-        # 交易日结束，论坛信息更新
+        # Trading day ended, update forum messages
         last_day_forum_message.clear()
         log.logger.debug(f"DAY {date} ends, display forum messages...")
         for agent in all_agents:

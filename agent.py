@@ -57,8 +57,8 @@ class Agent:
         self.character = random.choice(["Conservative", "Aggressive", "Balanced", "Growth-Oriented"])
 
         self.stock_a_amount, self.stock_b_amount, self.cash, init_debt = random_init(stock_a_price, stock_b_price)
-        #self.stock_b_amount = 0  # stock 以手为单位存储，一手=10股，股价其实是一手的价格
-        self.init_proper = self.get_total_proper(stock_a_price, stock_b_price)  # 初始资产 后续借贷不超过初始资产
+        #self.stock_b_amount = 0  # stock is stored in lots, 1 lot = 10 shares, stock price is price per lot
+        self.init_proper = self.get_total_proper(stock_a_price, stock_b_price)  # Initial asset; subsequent borrowing cannot exceed initial asset
 
         self.action_history = [[] for _ in range(util.TOTAL_DATE)]
         self.chat_history = []
@@ -217,8 +217,8 @@ class Agent:
             log.logger.info("INFO: Agent {} decide not to loan".format(self.order))
         return loan
 
-    # date=交易日, time=当前交易时段
-    # 设置
+    # date = trading day, time = current trading session
+    # settings
     def plan_stock(self, date, time, stock_a, stock_b, stock_a_deals, stock_b_deals):
         if self.quit:
             return {"action_type": "no"}
@@ -353,7 +353,7 @@ class Agent:
     def loan_repayment(self, date):
         if self.quit:
             return
-        # check是否贷款还款日，还款，破产检查
+        # Check whether today is loan repayment day, process repayment and bankruptcy check
         for loan in self.loans[:]:
             if loan["repayment_date"] == date:
                 self.cash -= loan["amount"] * (1 + util.LOAN_RATE[loan["loan_type"]])
@@ -365,7 +365,7 @@ class Agent:
     def interest_payment(self):
         if self.quit:
             return
-        # 贷款付息日付息
+        # Pay loan interest on repayment day
         for loan in self.loans:
             self.cash -= loan["amount"] * util.LOAN_RATE[loan["loan_type"]] / 12
             if self.cash < 0:
